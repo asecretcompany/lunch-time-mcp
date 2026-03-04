@@ -1,0 +1,18 @@
+{
+    "_comment": "Signal MCP Allowlist Configuration",
+    "_tip": "For maximum security, use Signal UUIDs (ACI) instead of phone numbers. UUIDs are cryptographically bound to accounts and cannot be spoofed.",
+    "_outbound_section": "Controls who the agent can SEND messages to",
+    "allowed_recipients": [
+        "+11234567890"
+    ],
+    "allowed_groups": [
+        "Engineering Team"
+    ],
+    "_inbound_section": "Controls who the agent will ACCEPT messages from",
+    "allowed_senders": [
+        "+11234567890"
+    ],
+    "allowed_receive_groups": [
+        "Engineering Team"
+    ]
+}
