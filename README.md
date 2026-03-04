@@ -61,12 +61,25 @@ Create `~/signalAllowList.json`:
 
 ## Setting up the Polling Daemon
 
-To ensure instant message delivery to the agent without blocking the `signal-cli`, run the background watcher script.
+The polling daemon ingests Signal messages into a local SQLite database. The MCP server reads from this DB instead of calling signal-cli directly, which avoids lock contention.
+
+```bash
+python -m lunch_time_mcp.signal_poller \
+    --user-id +1YOURNUMBER \
+    --allowlist ~/signalAllowList.json \
+    --db-path ~/.lunch-time-mcp/inbox.db \
+    --receive-timeout 5 \
+    --poll-interval 10
+```
+
+The `--receive-timeout` (default 5s) controls how long each `signal-cli receive` call holds the lock. Keep it short to give the MCP server windows to send.
+
+Also run the watch script to trigger the agent on new messages:
 
 ```bash
 nohup python3 watch_signal.py > /tmp/watch_signal.log 2>&1 &
 ```
-This script polls the Signal sqlite database and drops a `/tmp/signal_prompt.txt` file whenever a new message arrives.
+This polls the SQLite inbox and drops a `/tmp/signal_prompt.txt` trigger file whenever a new message arrives.
 
 ## Setting up Antigravity
 
@@ -86,7 +99,7 @@ Add the MCP server to your `mcp_config.json`:
         "--transport",
         "stdio",
         "--db-path",
-        "/path/to/.signal-mcp/inbox.db"
+        "/path/to/.lunch-time-mcp/inbox.db"
       ]
     }
   }
@@ -109,9 +122,7 @@ This workflow puts the agent into a continuous listening loop for Signal message
 
 2. Once the command completes, parse the message content, execute the tasks, and formulate a concise summary.
 
-3. Send the response back to the user via Signal.
-// turbo
-`signal-cli -u +1YOURNUMBER send -g YOUR_GROUP_ID -m "<RESPONSE_SUMMARY>"`
+3. Send the response back via the `send_message_to_group` MCP tool. The default group is pre-configured.
 
 4. **Loop:** IMMEDIATELY repeat Step 1.
 ```

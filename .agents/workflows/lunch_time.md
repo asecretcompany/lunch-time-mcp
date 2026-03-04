@@ -3,7 +3,7 @@ description: Starts the Signal Break-Time Agent to allow bi-directional communic
 ---
 This workflow puts the agent into a continuous listening loop for Signal messages when the user is away from their desk, such as during "lunch time".
 
-6. Ensure the signal watch script is running:
+1. Ensure the signal watch script is running:
 // turbo
 `nohup python3 ./watch_signal.py > /tmp/watch_signal.log 2>&1 &`
 
@@ -14,9 +14,7 @@ This workflow puts the agent into a continuous listening loop for Signal message
 
 3. Once the command completes and outputs the JSON from the trigger file, parse the message content, execute the user's requested tasks in the codebase, and formulate a concise summary of the results.
 
-4. Send the response back to the user via Signal. Replace the placeholder message with your summary result.
-// turbo
-`signal-cli -u +1YOURNUMBER send -g YOUR_GROUP_ID -m "<RESPONSE_SUMMARY>"`
+4. Send the response back to the user via Signal using the `send_message_to_group` MCP tool with your summary as the `message` parameter. The default group is already configured, so no `group_id` is needed. This routes through the retry logic and handles signal-cli lock contention automatically.
 
 5. **Loop to maintain conversation:** IMMEDIATELY repeat Step 2 to wait for new messages or follow-up feedback. Do not prompt the user in the IDE chat unless explicit feedback is required via `notify_user` — assume listening mode.
 

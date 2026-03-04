@@ -242,9 +242,53 @@ def _validate_file_path(file_path: str) -> Path:
 
 # --- Core signal-cli execution ---
 
+# Lock-related error patterns in signal-cli stderr
+_LOCK_ERROR_PATTERNS = ("locked", "lock", "could not open", "database is locked")
 
-async def _run_signal_cli(args: list[str]) -> tuple[str, str, int | None]:
-    """Run a signal-cli command using exec (no shell interpretation).
+
+def _is_lock_error(stderr: str) -> bool:
+    """Check if a signal-cli failure is due to config directory lock contention."""
+    lower = stderr.lower()
+    return any(pattern in lower for pattern in _LOCK_ERROR_PATTERNS)
+
+
+async def _run_signal_cli(
+    args: list[str], max_retries: int = 3
+) -> tuple[str, str, int | None]:
+    """Run a signal-cli command, retrying on config lock contention.
+
+    signal-cli uses an exclusive file lock on its data directory. When the
+    polling daemon is mid-receive, concurrent send commands will fail.
+    This wrapper detects lock errors and retries with exponential backoff.
+
+    Args:
+        args: List of arguments to pass to signal-cli (excluding 'signal-cli' itself).
+        max_retries: Maximum number of retries on lock contention (default: 3).
+    """
+    stdout_str, stderr_str, returncode = "", "", None
+
+    for attempt in range(max_retries + 1):
+        stdout_str, stderr_str, returncode = await _run_signal_cli_once(args)
+
+        # Success or non-lock error — return immediately
+        if returncode == 0 or not _is_lock_error(stderr_str):
+            return stdout_str, stderr_str, returncode
+
+        # Lock error — retry with exponential backoff
+        if attempt < max_retries:
+            wait = 2 ** attempt  # 1s, 2s, 4s
+            logger.warning(
+                f"signal-cli lock contention (attempt {attempt + 1}/{max_retries}), "
+                f"retrying in {wait}s"
+            )
+            await asyncio.sleep(wait)
+
+    logger.error(f"signal-cli lock contention persisted after {max_retries} retries")
+    return stdout_str, stderr_str, returncode
+
+
+async def _run_signal_cli_once(args: list[str]) -> tuple[str, str, int | None]:
+    """Run a single signal-cli command using exec (no shell interpretation).
 
     Args:
         args: List of arguments to pass to signal-cli (excluding 'signal-cli' itself).

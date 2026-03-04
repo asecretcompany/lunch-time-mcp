@@ -37,12 +37,14 @@ class Poller:
         self,
         user_id: str,
         db_path: Path,
-        poll_interval: int = 30,
+        poll_interval: int = 10,
+        receive_timeout: int = 5,
         allowlist_path: str | None = None,
     ):
         self.user_id = user_id
         self.db_path = db_path
         self.poll_interval = poll_interval
+        self.receive_timeout = receive_timeout
         self._running = True
         self._allowed_senders: set[str] = set()
         self._allowed_groups: set[str] = set()
@@ -91,7 +93,7 @@ class Poller:
                 self.user_id,
                 "receive",
                 "--timeout",
-                str(self.poll_interval),
+                str(self.receive_timeout),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -100,7 +102,12 @@ class Poller:
 
             if proc.returncode != 0:
                 stderr_text = stderr.decode().strip() if stderr else ""
-                if "timeout" not in stderr_text.lower():
+                # During shutdown, signal-cli gets killed (rc=-9) — that's expected
+                if not self._running:
+                    logger.debug(
+                        f"signal-cli terminated during shutdown (rc={proc.returncode})"
+                    )
+                elif "timeout" not in stderr_text.lower():
                     logger.error(
                         f"signal-cli error (rc={proc.returncode}): {stderr_text}"
                     )
@@ -171,7 +178,8 @@ class Poller:
         """Main polling loop."""
         logger.info(
             f"Starting poller: user={self.user_id}, "
-            f"db={self.db_path}, interval={self.poll_interval}s"
+            f"db={self.db_path}, receive_timeout={self.receive_timeout}s, "
+            f"sleep={self.poll_interval}s"
         )
 
         while self._running:
@@ -179,10 +187,10 @@ class Poller:
             if count > 0:
                 logger.info(f"Ingested {count} message(s) this cycle")
 
-            # Small sleep between cycles to avoid hammering on errors
-            # (the actual --timeout in signal-cli does the long wait)
+            # Sleep between cycles — this is when the lock is NOT held,
+            # giving the MCP server a window to send messages.
             if self._running:
-                await asyncio.sleep(2)
+                await asyncio.sleep(self.poll_interval)
 
     def stop(self) -> None:
         """Request graceful shutdown."""
@@ -202,8 +210,17 @@ def main() -> None:
     parser.add_argument(
         "--poll-interval",
         type=int,
-        default=30,
-        help="Seconds to wait during each signal-cli receive call (default: 30)",
+        default=10,
+        help="Seconds to sleep between poll cycles (default: 10)",
+    )
+    parser.add_argument(
+        "--receive-timeout",
+        type=int,
+        default=5,
+        help=(
+            "Seconds for each signal-cli receive call (default: 5). "
+            "Keep this short to minimize lock contention with the MCP server."
+        ),
     )
 
     args = parser.parse_args()
@@ -214,6 +231,7 @@ def main() -> None:
         user_id=args.user_id,
         db_path=db_path,
         poll_interval=args.poll_interval,
+        receive_timeout=args.receive_timeout,
         allowlist_path=args.allowlist,
     )
 
