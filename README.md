@@ -4,7 +4,7 @@ A fork of [signal-mcp](https://github.com/rymurr/signal-mcp) integration for [si
 
 The primary use case is the **Break-Time Agent** — stepping away from your desk, dropping your agent into a watch loop, and continuing to collaborate with it via Signal from your phone.
 
-Simple ACL's are in place, recomend UUIDs over phone numbers for spoof-proof identity. Use additional security measures.s
+Simple ACL's are in place, recommend UUIDs over phone numbers for spoof-proof identity. Use additional security measures.s
 
 ## Features
 
